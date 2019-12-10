@@ -1,0 +1,449 @@
+---
+title: "Workout 03"
+author: "Akhil Perimbeti"
+date: "12/8/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+library(xml2)
+library(rvest)
+library(stringr)
+library(tm)
+library(wordcloud)
+library(ggplot2)
+library(dplyr)
+```
+
+## 1) Extract Simple Information of the Authors
+<br/>
+```{r}
+# Paul Romer data
+
+download.file('https://raw.githubusercontent.com/ucb-stat133/stat133-fall-2019/master/data/scholar/paul_romer_GoogleScholarCitations.html',destfile = "paul_romer_GoogleScholarCitations.webarchive")
+
+rawdat1 =read_html('https://raw.githubusercontent.com/ucb-stat133/stat133-fall-2019/master/data/scholar/paul_romer_GoogleScholarCitations.html')
+
+table1 <- html_table(rawdat1)
+
+save(rawdat1, file = "/Users/akhilperimbeti/Desktop/workout03/data/rawdata/scholarA_GoogleScholarCitations.html")
+# William Nordhaus data
+
+download.file('https://raw.githubusercontent.com/ucb-stat133/stat133-fall-2019/master/data/scholar/william_nordhaus_GoogleScholarCitations.html',destfile = "william_nordhaus_GoogleScholarCitations.webarchive")
+
+rawdat2 =read_html('https://raw.githubusercontent.com/ucb-stat133/stat133-fall-2019/master/data/scholar/william_nordhaus_GoogleScholarCitations.html')
+
+table2 <- html_table(rawdat2)
+
+save(rawdat2, file = "/Users/akhilperimbeti/Desktop/workout03/data/rawdata/scholarB_GoogleScholarCitations.html")
+```
+
+<br/> 
+
+(a) Extracting Scholar Names
+```{r}
+
+# Scholar A (Paul Romer)
+
+name1 <- rawdat1 %>% html_nodes(xpath = '//*[@id="gsc_prf_in"]') %>% html_text
+name1
+
+# Scholar B (William Nordhaus)
+
+name2 <- rawdat2 %>% html_nodes(xpath = '//*[@id="gsc_prf_in"]') %>% html_text
+name2
+
+```
+
+<br/> 
+
+(b) Extracting Institutions affiliated with each scholar
+
+```{r}
+# Institution Affiliated with Scholar A
+
+institution1 <- rawdat1 %>% html_nodes(xpath = '//*[@class="gsc_prf_il"]') %>% html_text
+if (length(strsplit(institution1, ",")) == 0) {
+  sa_institution = NA
+} else {
+  sa_institution = strsplit(institution1, ",")[[1]][2]
+}
+sa_institution
+
+# Institution Affiliated with Scholar B
+
+institution2 <- rawdat2 %>% html_nodes(xpath = '//*[@class="gsc_prf_il"]') %>% html_text
+if (length(strsplit(institution2, ",")) == 0) {
+  sb_institution = NA
+} else {
+  sb_institution = strsplit(institution2, ",")[[1]][2]
+}
+sb_institution
+
+```
+
+<br/>
+
+## 2) Extract All The Papers For Each Author (Not Just The 20 Most Cited)
+<br/>
+```{r}
+
+#CLEAN DATA
+
+table_citations1=table1[[1]]
+long_info1=table1[[2]][1]
+citation1=table1[[2]][2]
+year1=table1[[2]][3]
+
+
+table_citations2=table2[[1]]
+long_info2=table2[[2]][1]
+citation2=table2[[2]][2]
+year2=table2[[2]][3]
+
+info_link1=rawdat1%>% html_nodes(xpath='//*[@id="gsc_a_b"]')%>%html_nodes(xpath='tr')%>%html_nodes(xpath='td')
+result1=sapply(html_children(info_link1),html_text)
+result1=result1[result1!='*']
+
+info_link2=rawdat2%>% html_nodes(xpath='//*[@id="gsc_a_b"]')%>%html_nodes(xpath='tr')%>%html_nodes(xpath='td')
+result2=sapply(html_children(info_link2),html_text)
+result2=result2[result2!='*']
+
+
+df1_citations=data.frame(article_title=result1[seq(1,length(result1),5)],
+                         
+author=result1[seq(2,length(result1),5)],
+                       journal=result1[seq(3,length(result1),5)],
+                       citations=result1[seq(4,length(result1),5)],
+                       year=result1[seq(5,length(result1),5)])
+
+
+df2_citations =data.frame(article_title=result2[seq(1,length(result2),5)],
+                       author=result2[seq(2,length(result2),5)],
+                       journal=result2[seq(3,length(result2),5)],
+                       citations=result2[seq(4,length(result2),5)],
+                       year=result2[seq(5,length(result2),5)])
+
+save(df1_citations, file= "/Users/akhilperimbeti/Desktop/workout03/data/cleandata/scholarA_GoogleScholarCitations.csv")
+save(df2_citations, file= "/Users/akhilperimbeti/Desktop/workout03/data/cleandata/scholarB_GoogleScholarCitations.csv" )
+
+final_df=rbind(df1_citations,df2_citations)
+
+head(final_df, 5)
+tail(final_df, 5)
+
+```
+
+
+## 3) Practice with Regular Expressions
+<br/>
+(a) Paper titles that begin with a vowel
+
+```{r}
+# Paul Romer vowels
+paul_vowels=0
+for (i in 1:length(df1_citations[[1]])){
+ if (substr(df1_citations[[1]][i],1,1)== "A" |substr(df1_citations[[1]][i],1,1)=="I" | substr(df1_citations[[1]][i],1,1)=="E"|substr(df1_citations[[1]][i],1,1)=="O"|substr(df1_citations[[1]][i],1,1)=="U"){paul_vowels = paul_vowels+1}
+}
+
+paul_vowels
+
+# William Nordhaus vowels
+
+william_vowels <- 0
+for (i in 1:226) {
+  if(any(substring(df2_citations[[1]][i], 1, 1) == c("A", "E", "I", "O", "U")) == TRUE) {
+    william_vowels <- william_vowels + 1
+  } 
+}
+william_vowels
+
+```
+
+<br/>
+
+(b) Paper titles ending with "s"
+
+```{r}
+
+# "S" beginning papers for Paul Romer
+
+paulpaper=0
+
+for (i in 1:length(df1_citations[[1]])){
+  a=nchar(substr(df1_citations[[1]][i],1,10000))
+  if (substr(df1_citations[[1]][i],a,a)== "s"){paulpaper=paulpaper+1}
+}
+paulpaper
+
+# "S" beginning paper for William Nordhaus
+
+williampaper=0
+
+for (i in 1:length(df2_citations[[1]])){
+  a=nchar(substr(df2_citations[[1]][i],1,10000))
+  if (substr(df2_citations[[1]][i],a,a)== "s"){williampaper=williampaper+1}
+}
+williampaper
+
+```
+
+<br/>
+
+(c) Longest Paper Titles for each author
+
+```{r}
+
+# Longest Title for Paul Romer
+paultitle=0
+
+for (i in 1:length(df1_citations[[1]])){
+  x=nchar(substr(df1_citations[[1]][i],1,10000))
+  if (x >paultitle){
+    paultitle=x 
+    y=i}
+}
+paultitle
+
+substr(df1_citations[[1]][y],1,100000000)
+
+# Longest Title for William Nordhaus
+willtitle=0
+
+for (i in 1:length(df2_citations[[1]])){
+  x=nchar(substr(df2_citations[[1]][i],1,10000))
+  if (x > willtitle){
+    willtitle= x 
+    y=i}
+}
+
+willtitle
+
+substr(df2_citations[[1]][y],1,100000000)
+
+```
+
+<br/>
+
+(d) Variable number of punctuation symbols in titles. Summary stats and histograms
+
+```{r}
+
+# Paul Romer's symbols and histogram
+paul_punctuation <- (str_count(df1_citations[[1]], "[:punct:]"))
+summary(paul_punctuation)
+hist(paul_punctuation, main = "Total # of punctuation symbols in Romer Titles", xlab = "# of punctuation per title")
+
+# William Nordhaus' symbols and histogram
+william_punctuation <- (str_count(df2_citations[[1]], "[:punct:]"))
+summary(william_punctuation)
+hist(william_punctuation, main = "Total # of punctuation symbols in Nordhaus Titles", xlab = "# of punctuation per title")
+```
+
+<br/>
+
+(e) Removing words --> the, a, an, and, in, if, but as well as numbers and punctuation from the titles.
+
+
+```{r}
+stop_words <- c("the", "a", "an", "and", "in", "if", "but", "of", "to", "from", "for", "on")
+
+# Paul Romer titles without stop words, punctuation and numbers
+low_df1 <- tolower(df1_citations[[1]])
+p1 <- c()
+s1<- c()
+
+for (i in 1:226) {
+  p1[i] <- removePunctuation(low_df1[i])
+  p1[i] <- removeWords(p1[i], stop_words)
+  p1[i] <- removeNumbers(p1[i])
+  s1 <- c(s1, strsplit(p1[i], "\\s+")[[1]])
+}
+head(s1,20)
+
+# William Nordhaus titles without stop words, punctuation and numbers
+low_df2 <- tolower(df2_citations[[1]])
+p2 <- c()
+s2<- c()
+
+for (i in 1:226) {
+  p2[i] <- removePunctuation(low_df2[i])
+  p2[i] <- removeWords(p2[i], stop_words)
+  p2[i] <- removeNumbers(p2[i])
+  s2 <- c(s2, strsplit(p2[i], "\\s+")[[1]])
+}
+head(s2,20)
+```
+
+<br/>
+
+(f) Scholar A (Paul Romer) 10 most frequent words
+
+
+```{r}
+
+# Paul Rober's Top Ten Most Frequent Words
+x=str_replace_all(df1_citations$article_title,"\\sthe\\s"," ")
+words=table(tolower(unlist(strsplit(x,split=" "))))
+
+words["and"]=0
+words["the"]=0
+words["of"]=0
+words["in"]=0
+words["from"]=0
+words["an"]=0
+words["a"]=0
+words["to"]=0
+words["for"]=0
+words["on"]=0
+head(sort(words,decreasing=TRUE),10)
+```
+<br/>
+
+(g) Scholar B (William Nordhaus) 10 most frequent words
+
+```{r}
+# William Norhaus' Top Ten Most Frequent Words
+y=str_replace_all(df2_citations$article_title,"\\sthe\\s"," ")
+words=table(tolower(unlist(strsplit(y,split=" "))))
+
+words["and"]=0
+words["the"]=0
+words["of"]=0
+words["in"]=0
+words["from"]=0
+words["an"]=0
+words["a"]=0
+words["to"]=0
+words["for"]=0
+words["on"]=0
+head(sort(words,decreasing=TRUE),10)
+
+```
+<br/>
+
+## 4) Data Visualization
+
+<br/>
+
+
+1. WordClouds for the titles of both authors
+- For Paul Romer, the most commomn occuring words are 'Economic' and "growth"
+- For William Nordhaus, the most commomn occuring words are 'Economic', "global", "climate"
+<br/>
+
+```{r}
+
+#Word Cloud for Paul Romer's Work
+docs1 <- Corpus(VectorSource(s1))
+dtm1 <- TermDocumentMatrix(docs1) 
+mat1 <- as.matrix(dtm1) 
+words1 <- sort(rowSums(mat1),decreasing=TRUE) 
+df1 <- data.frame(word = names(words1),freq=words1)
+set.seed(12345)
+
+png("/Users/akhilperimbeti/Desktop/workout03/images/wordcloud1.png",
+  width = 3.25,
+  height = 3.25,
+  units = "in",
+  res = 1200,
+  pointsize = 4)
+par(
+  mar      = c(5, 5, 2, 2),
+  xaxs     = "i",
+  yaxs     = "i",
+  cex.axis = 2,
+  cex.lab  = 2)
+wordcloud1 <- wordcloud(words = df1$word, freq = df1$freq, min.freq = 1, max.words=Inf, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Paired"), scale=c(3.5,0.25))
+dev.off()
+
+#Word Cloud for William Nordhaus Work
+docs2 <- Corpus(VectorSource(s2))
+dtm2 <- TermDocumentMatrix(docs2) 
+mat2 <- as.matrix(dtm2) 
+words2 <- sort(rowSums(mat2),decreasing=TRUE) 
+df2 <- data.frame(word = names(words2),freq=words2)
+set.seed(12345)
+
+png("/Users/akhilperimbeti/Desktop/workout03/images/wordcloud2.png",
+  width = 3.25,
+  height = 3.25,
+  units = "in",
+  res = 1200,
+  pointsize = 4)
+par(
+  mar      = c(5, 5, 2, 2),
+  xaxs     = "i",
+  yaxs     = "i",
+  cex.axis = 2,
+  cex.lab  = 2)
+wordcloud2 <- wordcloud(words = df2$word, freq = df2$freq, min.freq = 1, max.words=Inf, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Paired"), scale=c(3.5,0.25))
+dev.off()
+```
+
+<br/>
+
+2. Line Plot displaying the number of the publications for the two scholars across years.
+<br/>
+
+```{r}
+
+years <- 1974:2019
+
+dat1 <- tail(table1[[2]][3][[1]][which(table1[[2]][3][[1]] != "")], -1)
+count1 <- c(ftable(dat1)[1:2], rep(0, 11), ftable(dat1)[3], 0, ftable(dat1)[4:34])
+
+dat2 <- tail(table2[[2]][3][[1]][which(table2[[2]][3][[1]] != "")], -1)
+count2 <- c(rep(0, 14), ftable(dat2)[1], rep(0, 2), ftable(dat2)[2], rep(0, 3), ftable(dat2)[3], 0, ftable(dat2)[4], 0, ftable(dat2)[5:25])
+
+df_plot<- data.frame(years, count1, count1)
+
+png("/Users/akhilperimbeti/Desktop/workout03/images/number_of_publications.png",
+  width = 3.25,
+  height = 3.25,
+  units = "in",
+  res = 1200,
+  pointsize = 4)
+par(
+  mar      = c(5, 5, 2, 2),
+  xaxs     = "i",
+  yaxs     = "i",
+  cex.axis = 2,
+  cex.lab  = 2)
+ggplot(df_plot, aes(x=years)) + geom_line(aes(y=count1), color = "blue") + geom_line(aes(y=count2), color = "red") + ylab("Number of Publications") + xlab("Years") + theme(legend.position="right")
+dev.off()
+```
+
+##5) Answers to Questions
+<br/>
+```{r}
+
+table_citations1=table1[[1]]
+long_info1=table1[[2]][1]
+citation1=table1[[2]][2]
+year1=table1[[2]][3]
+
+table_citations1
+
+table_citations2=table2[[1]]
+long_info2=table2[[2]][1]
+citation2=table2[[2]][2]
+year2=table2[[2]][3]
+
+table_citations2
+
+```
+
+Q1: On Average, The author William Norhaus has more co-authors
+<br/>
+Q3 : No, the two scholars have never collaborated on a paper together
+<br/>
+Q4 : The Paper with the most co-authors is "Economic growth and business cycles: The labor supply decision with two types of technological progress"
+<br/>
+Q6: There does not seem to be a set correlation between number of pages in an article and the number of citations.
+<br/>
+Q8: According to the tables above, the total number of citations for Paul Romer is 85,359 and the total number of citations for William Nordhaus is      65,484. So TOTAL number of citations is 150,843
+<br/>
+Q9: According to the citations data, I believe the author Paul Romer is the most influential in his field. He mainly delves into economic growth and     has a very significant number of citations(85,359)
